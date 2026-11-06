@@ -7,14 +7,68 @@ function rows(db, sql, params = []) {
   return values.map(row => Object.fromEntries(columns.map((c, i) => [c, row[i]])))
 }
 
+// Para cuentas de inversión (security_id IS NOT NULL) el balance es
+// acciones × precio más reciente, NO el coste de compra (amount_cents).
+function buildBalanceMap(db) {
+  const balMap = {}
+
+  // 1. Saldo base para todas las cuentas (coste para inversiones, saldo real para el resto)
+  const br = db.exec('SELECT account_id, SUM(amount_cents) FROM splits GROUP BY account_id')
+  if (br.length) for (const [id, bal] of br[0].values) balMap[id] = bal || 0
+
+  // 2. Sobrescribir cuentas de inversión con valor de mercado actual
+  try {
+    const inv = rows(db, `
+      SELECT a.id,
+        COALESCE((SELECT SUM(s.shares_micro) FROM splits s WHERE s.account_id = a.id), 0) AS shares_micro,
+        (SELECT COALESCE(p.eur_price_micro, p.price_micro)
+         FROM prices p WHERE p.security_id = a.security_id
+         ORDER BY p.price_date DESC LIMIT 1) AS price_micro
+      FROM accounts a
+      WHERE a.security_id IS NOT NULL
+    `)
+    for (const acc of inv) {
+      if (acc.price_micro != null && acc.shares_micro) {
+        // shares_micro / 1e6 × price_micro / 1e6 = EUR → × 100 = céntimos
+        balMap[acc.id] = Math.round((acc.shares_micro / 1e6) * (acc.price_micro / 1e6) * 100)
+      }
+    }
+  } catch (_) {}
+
+  return balMap
+}
+
 function getNetWorth(db) {
+  // Cuentas regulares
   const r = rows(db, `
     SELECT SUM(s.amount_cents) AS neto
     FROM splits s
     JOIN accounts a ON a.id = s.account_id
     WHERE a.account_class IN ('activo','pasivo') AND a.is_closed = 0
+      AND a.security_id IS NULL
   `)
-  return (r[0]?.neto ?? 0) / 100
+  let neto = r[0]?.neto ?? 0
+
+  // Cuentas de inversión: acciones × precio actual
+  try {
+    const inv = rows(db, `
+      SELECT
+        COALESCE((SELECT SUM(s.shares_micro) FROM splits s WHERE s.account_id = a.id), 0) AS shares_micro,
+        (SELECT COALESCE(p.eur_price_micro, p.price_micro)
+         FROM prices p WHERE p.security_id = a.security_id
+         ORDER BY p.price_date DESC LIMIT 1) AS price_micro
+      FROM accounts a
+      WHERE a.security_id IS NOT NULL AND a.is_closed = 0
+        AND a.account_class IN ('activo','pasivo')
+    `)
+    for (const acc of inv) {
+      if (acc.price_micro != null && acc.shares_micro) {
+        neto += Math.round((acc.shares_micro / 1e6) * (acc.price_micro / 1e6) * 100)
+      }
+    }
+  } catch (_) {}
+
+  return neto / 100
 }
 
 // Estadísticas de inicio: num cuentas abiertas, num entidades
@@ -26,9 +80,7 @@ function getStatsInicio(db) {
 
 // Lista plana de cuentas para el dashboard de Inicio (como en el desktop)
 function getCuentasDashboard(db) {
-  const balMap = {}
-  const br = db.exec('SELECT account_id, SUM(amount_cents) FROM splits GROUP BY account_id')
-  if (br.length) for (const [id, bal] of br[0].values) balMap[id] = bal || 0
+  const balMap = buildBalanceMap(db)
 
   const list = rows(db, `
     SELECT a.id, a.name, a.account_class, a.institution, a.type_name,
@@ -48,9 +100,7 @@ function getCuentasDashboard(db) {
 
 // Árbol jerárquico de cuentas para la pestaña Cuentas
 function getCuentasArbol(db) {
-  const balMap = {}
-  const br = db.exec('SELECT account_id, SUM(amount_cents) FROM splits GROUP BY account_id')
-  if (br.length) for (const [id, bal] of br[0].values) balMap[id] = bal || 0
+  const balMap = buildBalanceMap(db)
 
   const list = rows(db, `
     SELECT a.id, a.name, a.parent_id, a.account_class, COALESCE(a.currency,'EUR') AS currency
