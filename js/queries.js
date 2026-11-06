@@ -31,6 +31,9 @@ function buildBalanceMap(db) {
       if (acc.price_micro != null && acc.shares_micro) {
         // shares_micro / 1e6 × price_micro / 1e6 = EUR → × 100 = céntimos
         balMap[acc.id] = Math.round((acc.shares_micro / 1e6) * (acc.price_micro / 1e6) * 100)
+      } else {
+        // Vendidas completamente (0 acciones): valor de mercado = 0
+        balMap[acc.id] = 0
       }
     }
   } catch (_) {}
@@ -84,13 +87,15 @@ function getCuentasDashboard(db) {
 
   const list = rows(db, `
     SELECT a.id, a.name, a.account_class, a.institution, a.type_name,
-           COALESCE(a.currency,'EUR') AS currency, a.is_favorite, a.iban, a.number
+           COALESCE(a.currency,'EUR') AS currency, a.is_favorite, a.iban, a.number,
+           a.security_id
     FROM accounts a
     WHERE a.account_class IN ('activo','pasivo') AND a.is_closed = 0
     ORDER BY a.account_class,
       CASE a.account_class WHEN 'activo' THEN a.is_favorite * -1 ELSE 0 END,
       a.name
   `).map(c => ({ ...c, balance: balMap[c.id] || 0 }))
+   .filter(c => !(c.security_id && (balMap[c.id] || 0) === 0))
 
   return {
     activo: list.filter(c => c.account_class === 'activo'),
@@ -103,13 +108,14 @@ function getCuentasArbol(db) {
   const balMap = buildBalanceMap(db)
 
   const list = rows(db, `
-    SELECT a.id, a.name, a.parent_id, a.account_class, COALESCE(a.currency,'EUR') AS currency
+    SELECT a.id, a.name, a.parent_id, a.account_class, COALESCE(a.currency,'EUR') AS currency,
+           a.security_id
     FROM accounts a
     WHERE a.account_class IN ('activo','pasivo') AND a.is_closed = 0
     ORDER BY
       CASE a.account_class WHEN 'activo' THEN 1 WHEN 'pasivo' THEN 2 ELSE 3 END,
       a.name
-  `)
+  `).filter(c => !(c.security_id && (balMap[c.id] || 0) === 0))
 
   const map = {}
   list.forEach(c => {
@@ -178,7 +184,7 @@ function getPresupuesto(db, mes) {
   `, [mesInicio, mesFin]).forEach(r => { actuales[r.account_id] = r.actual })
 
   return presup
-    .filter(p => p.budget_cents !== null || actuales[p.id])
+    .filter(p => p.budget_cents !== null)
     .map(p => ({ ...p, actual_cents: actuales[p.id] || 0 }))
 }
 
