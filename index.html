@@ -12,8 +12,8 @@
 </head>
 <body>
 
-  <!-- ── Pantalla: Desbloquear ──────────────────────────────────────────── -->
-  <div id="screen-unlock" class="screen active">
+  <!-- ── Pantalla: Desbloquear ──────────────────────────────────────────────── -->
+  <div id="screen-unlock" class="screen">
     <div class="unlock-wrap">
       <div class="unlock-logo">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -44,29 +44,136 @@
     </div>
   </div>
 
-  <!-- ── Pantalla: Inicio ───────────────────────────────────────────────── -->
-  <div id="screen-home" class="screen hidden">
-    <header class="app-header">
-      <span class="app-title">FinLock</span>
-      <button id="btn-cerrar" class="btn-icon" title="Cerrar sesión">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-          <polyline points="16 17 21 12 16 7"/>
-          <line x1="21" y1="12" x2="9" y2="12"/>
+  <!-- ── App principal: pestañas ────────────────────────────────────────────── -->
+  <div id="screen-app" class="screen">
+
+    <div class="tab-container">
+
+      <!-- ── PESTAÑA: INICIO ───────────────────────────────────────────────── -->
+      <div id="tab-inicio" class="tab-panel">
+        <header class="app-header">
+          <span class="app-title">FinLock</span>
+          <button id="btn-cerrar" class="btn-icon" title="Cerrar sesión">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
+        </header>
+        <div class="tab-scroll" id="inicio-scroll">
+          <div class="networth-card">
+            <span class="networth-label">Patrimonio neto</span>
+            <span id="networth-value" class="networth-value">—</span>
+          </div>
+          <div id="inicio-stats" class="stats-row"></div>
+          <div id="inicio-dashboard"></div>
+          <div id="inicio-planificados"></div>
+        </div>
+      </div>
+
+      <!-- ── PESTAÑA: CUENTAS ──────────────────────────────────────────────── -->
+      <div id="tab-cuentas" class="tab-panel">
+        <header class="app-header">
+          <span class="app-title">Cuentas</span>
+        </header>
+        <div id="accounts-list" class="tab-scroll"></div>
+      </div>
+
+      <!-- ── PESTAÑA: PRESUPUESTO ──────────────────────────────────────────── -->
+      <div id="tab-presupuesto" class="tab-panel">
+        <header class="app-header">
+          <span class="app-title">Presupuesto</span>
+        </header>
+        <div class="mes-nav">
+          <button id="btn-presu-prev" class="btn-mes">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span id="presu-mes-label" class="mes-nav-label">—</span>
+          <button id="btn-presu-next" class="btn-mes">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+        <div id="presu-list" class="tab-scroll"></div>
+      </div>
+
+      <!-- ── PESTAÑA: INFORMES ─────────────────────────────────────────────── -->
+      <div id="tab-informes" class="tab-panel">
+        <header class="app-header">
+          <span class="app-title">Informes</span>
+        </header>
+        <div id="inf-periodo-filters" class="tx-filters tx-filters--periodo">
+          <button class="chip is-active" data-inf-periodo="mes">Este mes</button>
+          <button class="chip" data-inf-periodo="mesant">Mes ant.</button>
+          <button class="chip" data-inf-periodo="trim">Trimestre</button>
+          <button class="chip" data-inf-periodo="anio">Este año</button>
+        </div>
+        <div class="inf-tabs">
+          <button class="inf-tab active" data-inf-tab="gastos">Gastos</button>
+          <button class="inf-tab" data-inf-tab="ingresos">Ingresos</button>
+          <button class="inf-tab" data-inf-tab="pagadores">Pagadores</button>
+          <button class="inf-tab" data-inf-tab="patrimonio">Patrimonio</button>
+        </div>
+        <div id="inf-content" class="tab-scroll"></div>
+      </div>
+
+      <!-- ── PESTAÑA: AGENDA ───────────────────────────────────────────────── -->
+      <div id="tab-agenda" class="tab-panel">
+        <header class="app-header">
+          <span class="app-title">Agenda</span>
+        </header>
+        <div id="agenda-list" class="tab-scroll"></div>
+      </div>
+
+    </div><!-- /tab-container -->
+
+    <!-- ── Navegación inferior ──────────────────────────────────────────────── -->
+    <nav class="bottom-nav">
+      <button class="bnav-btn active" data-tab="inicio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
         </svg>
+        <span>Inicio</span>
       </button>
-    </header>
+      <button class="bnav-btn" data-tab="cuentas">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="1" y="4" width="22" height="16" rx="2"/>
+          <line x1="1" y1="10" x2="23" y2="10"/>
+        </svg>
+        <span>Cuentas</span>
+      </button>
+      <button class="bnav-btn" data-tab="presupuesto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M21.21 15.89A10 10 0 118 2.83"/>
+          <path d="M22 12A10 10 0 0012 2v10z"/>
+        </svg>
+        <span>Presupuesto</span>
+      </button>
+      <button class="bnav-btn" data-tab="informes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <line x1="18" y1="20" x2="18" y2="10"/>
+          <line x1="12" y1="20" x2="12" y2="4"/>
+          <line x1="6" y1="20" x2="6" y2="14"/>
+          <line x1="2" y1="20" x2="22" y2="20"/>
+        </svg>
+        <span>Informes</span>
+      </button>
+      <button class="bnav-btn" data-tab="agenda">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="3" y="4" width="18" height="18" rx="2"/>
+          <line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/>
+          <line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        <span>Agenda</span>
+      </button>
+    </nav>
 
-    <div class="networth-card">
-      <span class="networth-label">Patrimonio neto</span>
-      <span id="networth-value" class="networth-value">—</span>
-    </div>
+  </div><!-- /screen-app -->
 
-    <div id="accounts-list" class="accounts-list"></div>
-  </div>
-
-  <!-- ── Pantalla: Cuenta ───────────────────────────────────────────────── -->
-  <div id="screen-cuenta" class="screen hidden">
+  <!-- ── Pantalla: Cuenta (overlay) ────────────────────────────────────────── -->
+  <div id="screen-cuenta" class="screen">
     <header class="app-header app-header--cuenta">
       <button id="btn-back" class="btn-icon btn-back">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
@@ -95,6 +202,12 @@
       </div>
     </div>
 
+    <div id="periodo-filters" class="tx-filters tx-filters--periodo">
+      <button class="chip is-active" data-periodo="mes">Este mes</button>
+      <button class="chip" data-periodo="trim">Trimestre</button>
+      <button class="chip" data-periodo="anio">Año</button>
+      <button class="chip" data-periodo="todo">Todo</button>
+    </div>
     <div id="tx-filters" class="tx-filters">
       <button class="chip is-active" data-signo="">Todos</button>
       <button class="chip" data-signo="gasto">Gastos</button>

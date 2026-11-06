@@ -1,22 +1,100 @@
 // app.js — controlador principal de FinLock Mobile
 
 // ── Estado ────────────────────────────────────────────────────────────────────
-let _SQL        = null   // clase sql.js
-let _db         = null   // instancia de BD abierta
-let _archivos   = []     // archivos .enc encontrados en Drive
-let _archivoId  = null   // id del archivo seleccionado
-let _cuentaId   = null   // id de la cuenta activa
+let _SQL        = null
+let _db         = null
+let _archivos   = []
+let _archivoId  = null
+let _cuentaId   = null
+let _cuentaActiva = null
+let _periodo      = 'mes'
+let _signo        = ''
+
+let _tabActivo    = 'inicio'
+let _presuMes     = (() => {
+  const h = new Date()
+  return `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}`
+})()
+let _infTab       = 'gastos'
+let _infPeriodo   = 'mes'
 
 // ── Formato ───────────────────────────────────────────────────────────────────
-const fmtEUR = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' })
+const fmtEUR   = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' })
 const fmtFecha = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' })
+const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+const MESES_LARGO = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
 function eur(cents) { return fmtEUR.format(cents / 100) }
 function fecha(iso) { return fmtFecha.format(new Date(iso + 'T00:00:00')) }
+function esc(str)   { return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
+
+function formatMes(mes) {
+  const [yy, mm] = mes.split('-')
+  return `${MESES_LARGO[parseInt(mm)-1]} ${yy}`
+}
+
+function sumarMeses(mes, n) {
+  const d = new Date(mes + '-01')
+  d.setMonth(d.getMonth() + n)
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+}
+
+// Calcula desde/hasta (AAAA-MM-DD) a partir de un código de período
+function periodoAFechas(periodo) {
+  const h  = new Date()
+  const yy = h.getFullYear()
+  const mm = String(h.getMonth() + 1).padStart(2, '0')
+  const dd = String(h.getDate()).padStart(2, '0')
+  const hoy = `${yy}-${mm}-${dd}`
+
+  if (periodo === 'mes') {
+    return { desde: `${yy}-${mm}-01`, hasta: hoy }
+  }
+  if (periodo === 'mesant') {
+    const d = new Date(yy, h.getMonth() - 1, 1)
+    const ultimo = new Date(yy, h.getMonth(), 0)
+    const y2 = String(d.getFullYear())
+    const m2 = String(d.getMonth() + 1).padStart(2, '0')
+    const u2 = String(ultimo.getDate()).padStart(2, '0')
+    return { desde: `${y2}-${m2}-01`, hasta: `${y2}-${m2}-${u2}` }
+  }
+  if (periodo === 'trim') {
+    const q = Math.floor(h.getMonth() / 3)
+    const desdeM = String(q * 3 + 1).padStart(2, '0')
+    return { desde: `${yy}-${desdeM}-01`, hasta: hoy }
+  }
+  if (periodo === 'anio') {
+    return { desde: `${yy}-01-01`, hasta: hoy }
+  }
+  return { desde: `${yy}-${mm}-01`, hasta: hoy }
+}
 
 // ── Navegación ────────────────────────────────────────────────────────────────
 function mostrar(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id))
+  document.querySelectorAll('.screen').forEach(s => {
+    s.classList.toggle('active', s.id === id)
+  })
+}
+
+function cambiarTab(tab) {
+  _tabActivo = tab
+  document.querySelectorAll('.tab-panel').forEach(p =>
+    p.classList.toggle('active', p.id === `tab-${tab}`)
+  )
+  document.querySelectorAll('.bnav-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab)
+  )
+  if (_db) renderTab(tab)
+}
+
+function renderTab(tab) {
+  switch (tab) {
+    case 'inicio':      renderInicio();      break
+    case 'cuentas':     renderCuentas();     break
+    case 'presupuesto': renderPresupuesto(); break
+    case 'informes':    renderInformes();    break
+    case 'agenda':      renderAgenda();      break
+  }
 }
 
 // ── sql.js (carga diferida en background) ────────────────────────────────────
@@ -52,7 +130,7 @@ document.getElementById('btn-google').addEventListener('click', async () => {
       return
     }
 
-    const sel = document.getElementById('file-selector')
+    const sel    = document.getElementById('file-selector')
     const select = document.getElementById('file-select')
     select.innerHTML = _archivos.map(f =>
       `<option value="${f.id}">${f.name}</option>`
@@ -89,8 +167,8 @@ async function abrirArchivo() {
     const SQL = await ensureSQL()
     _db = new SQL.Database(dbBytes)
 
-    renderHome()
-    mostrar('screen-home')
+    cambiarTab('inicio')
+    mostrar('screen-app')
     setStatus('')
   } catch (e) {
     const msg = e.message?.toLowerCase().includes('decrypt')
@@ -102,67 +180,356 @@ async function abrirArchivo() {
   }
 }
 
-// ── Pantalla: Inicio ──────────────────────────────────────────────────────────
-function renderHome() {
-  const neto     = getNetWorth(_db)
-  const cuentas  = getCuentas(_db)
-  const activas  = cuentas.filter(c => c.account_class === 'activo')
-  const pasivas  = cuentas.filter(c => c.account_class === 'pasivo')
+// ── PESTAÑA: INICIO ───────────────────────────────────────────────────────────
+function renderInicio() {
+  const neto  = getNetWorth(_db) * 100  // en céntimos para eur()
+  const stats = getStatsInicio(_db)
+  const { activo, pasivo } = getCuentasDashboard(_db)
 
-  document.getElementById('networth-value').textContent = eur(neto * 100)
+  // Patrimonio neto
+  document.getElementById('networth-value').textContent = eur(neto)
   document.getElementById('networth-value').className =
     'networth-value' + (neto >= 0 ? ' pos' : ' neg')
+
+  // Stat tiles
+  document.getElementById('inicio-stats').innerHTML = `
+    <div class="stat-tile">
+      <div class="stat-tile-val">${stats.numCuentas}</div>
+      <div class="stat-tile-label">cuentas</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-tile-val">${stats.numEntidades}</div>
+      <div class="stat-tile-label">entidades</div>
+    </div>
+  `
+
+  // Dashboard de cuentas (como el desktop)
+  const renderGrupo = (titulo, items) => {
+    if (!items.length) return ''
+    const total = items.reduce((s, i) => s + i.balance, 0)
+    return `
+      <div class="dash-section-title">${titulo}</div>
+      ${items.map(i => {
+        const entidad = [i.institution, i.type_name].filter(Boolean).join(' · ')
+        return `
+          <div class="dash-cuenta-row">
+            <div class="dash-cuenta-info">
+              <div class="dash-cuenta-nombre">${esc(i.name)}</div>
+              ${entidad ? `<div class="dash-cuenta-entidad">${esc(entidad)}</div>` : ''}
+            </div>
+            <span class="cuenta-saldo ${i.balance >= 0 ? 'pos' : 'neg'}">${eur(i.balance)}</span>
+          </div>
+        `
+      }).join('')}
+      <div class="dash-grupo-total">
+        <span>Total ${titulo}</span>
+        <span class="cuenta-saldo ${total >= 0 ? 'pos' : 'neg'}">${eur(total)}</span>
+      </div>
+    `
+  }
+
+  document.getElementById('inicio-dashboard').innerHTML =
+    renderGrupo('Activo', activo) + renderGrupo('Pasivo', pasivo)
+
+  // Próximos planificados
+  const planes = getPlanificados(_db, 8)
+  const planEl = document.getElementById('inicio-planificados')
+  if (planes.length) {
+    let lastMes = ''
+    planEl.innerHTML = `<div class="dash-section-title">Próximos planificados</div>` +
+      planes.map(p => {
+        const [yy, mm, dd] = p.next_date.split('-')
+        const mes = `${MESES_LARGO[parseInt(mm)-1]} ${yy}`
+        let header = ''
+        if (mes !== lastMes) { lastMes = mes; header = `<div class="agenda-mes-sep">${mes}</div>` }
+        const cuenta = [p.institution, p.cuenta_nombre].filter(Boolean).join(' · ')
+        return header + `
+          <div class="agenda-row">
+            <span class="agenda-fecha">${dd}/${mm}</span>
+            <div class="agenda-info">
+              <div class="agenda-nombre">${esc(p.name)}</div>
+              ${cuenta ? `<div class="agenda-cuenta">${esc(cuenta)}</div>` : ''}
+            </div>
+            <span class="agenda-importe ${p.amount_cents >= 0 ? 'pos' : 'neg'}">${eur(p.amount_cents)}</span>
+          </div>
+        `
+      }).join('')
+    planEl.classList.remove('hidden')
+  } else {
+    planEl.classList.add('hidden')
+  }
+}
+
+// ── PESTAÑA: CUENTAS ──────────────────────────────────────────────────────────
+function renderCuentas() {
+  const raices  = getCuentasArbol(_db)
+  const activos = raices.filter(r => r.account_class === 'activo')
+  const pasivos = raices.filter(r => r.account_class === 'pasivo')
 
   const lista = document.getElementById('accounts-list')
   lista.innerHTML = ''
 
-  if (activas.length) {
+  if (activos.length) {
     lista.insertAdjacentHTML('beforeend', '<div class="grupo-titulo">Activo</div>')
-    activas.forEach(c => lista.appendChild(cuentaCard(c)))
+    activos.forEach(n => renderNodo(lista, n, 0))
   }
-  if (pasivas.length) {
+  if (pasivos.length) {
     lista.insertAdjacentHTML('beforeend', '<div class="grupo-titulo">Pasivo</div>')
-    pasivas.forEach(c => lista.appendChild(cuentaCard(c)))
+    pasivos.forEach(n => renderNodo(lista, n, 0))
   }
 }
 
-function cuentaCard(cuenta) {
-  const div = document.createElement('div')
-  div.className = 'cuenta-row'
-  const bal = cuenta.balance_cents / 100
-  div.innerHTML = `
-    <span class="cuenta-nombre">${cuenta.name}</span>
-    <span class="cuenta-saldo ${bal >= 0 ? 'pos' : 'neg'}">${eur(cuenta.balance_cents)}</span>
-  `
-  div.addEventListener('click', () => {
-    _cuentaId = cuenta.id
-    renderCuenta(cuenta)
-    mostrar('screen-cuenta')
-  })
-  return div
+function renderNodo(lista, nodo, depth) {
+  if (nodo.children.length) {
+    const div = document.createElement('div')
+    div.className = 'grupo-row'
+    div.style.paddingLeft = `${16 + depth * 14}px`
+    const bal = nodo.balanceTotal
+    div.innerHTML = `
+      <span class="grupo-row-nombre">${esc(nodo.name)}</span>
+      <span class="grupo-row-saldo ${bal >= 0 ? 'pos' : 'neg'}">${eur(bal)}</span>
+    `
+    lista.appendChild(div)
+    nodo.children.forEach(c => renderNodo(lista, c, depth + 1))
+  } else if (nodo.hasMov) {
+    const div = document.createElement('div')
+    div.className = 'cuenta-row'
+    div.style.paddingLeft = `${16 + depth * 14}px`
+    const bal = nodo.balance
+    div.innerHTML = `
+      <span class="cuenta-nombre">${esc(nodo.name)}</span>
+      <span class="cuenta-saldo ${bal >= 0 ? 'pos' : 'neg'}">${eur(bal)}</span>
+    `
+    div.addEventListener('click', () => {
+      _cuentaId     = nodo.id
+      _cuentaActiva = nodo
+      _periodo      = 'mes'
+      _signo        = ''
+      renderCuenta(nodo)
+      mostrar('screen-cuenta')
+    })
+    lista.appendChild(div)
+  }
 }
 
-// ── Pantalla: Cuenta ──────────────────────────────────────────────────────────
-function renderCuenta(cuenta, signo = '') {
-  const bal = cuenta.balance_cents / 100
-  document.getElementById('screen-cuenta-nombre').textContent  = cuenta.name
-  document.getElementById('screen-cuenta-saldo').textContent   = eur(cuenta.balance_cents)
-  document.getElementById('screen-cuenta-saldo').className     =
+// ── PESTAÑA: PRESUPUESTO ──────────────────────────────────────────────────────
+function renderPresupuesto() {
+  document.getElementById('presu-mes-label').textContent = formatMes(_presuMes)
+
+  const data   = getPresupuesto(_db, _presuMes)
+  const el     = document.getElementById('presu-list')
+
+  if (!data.length) {
+    el.innerHTML = '<p class="tx-vacio">Sin datos de presupuesto para este mes.<br>Configura el presupuesto en la app de escritorio.</p>'
+    return
+  }
+
+  const gastos   = data.filter(p => p.account_class === 'gasto')
+  const ingresos = data.filter(p => p.account_class === 'ingreso')
+
+  const renderSeccion = (titulo, items, esGasto) => {
+    if (!items.length) return ''
+
+    const totalBudget = items.reduce((s, p) => s + (p.budget_cents || 0), 0)
+    const totalActual = items.reduce((s, p) => s + Math.abs(p.actual_cents), 0)
+
+    const filas = items.map(p => {
+      const actual = Math.abs(p.actual_cents)
+      const budget = p.budget_cents || 0
+      const pct = budget > 0 ? Math.min(110, Math.round(actual / budget * 100)) : (actual > 0 ? 100 : 0)
+      const fillClass = pct >= 100 ? 'over' : (pct >= 80 ? 'warning' : '')
+
+      return `
+        <div class="presu-row">
+          <div class="presu-row-header">
+            <span class="presu-categoria">${esc(p.name)}</span>
+            <span class="presu-importes">
+              <span class="actual ${esGasto && actual > budget && budget > 0 ? 'neg' : ''}">${eur(actual)}</span>
+              ${budget ? ` / ${eur(budget)}` : ''}
+            </span>
+          </div>
+          ${budget > 0 ? `
+            <div class="presu-progress">
+              <div class="presu-progress-fill ${fillClass}" style="width:${pct}%"></div>
+            </div>` : ''}
+        </div>
+      `
+    }).join('')
+
+    return `
+      <div class="dash-section-title">${titulo}</div>
+      ${filas}
+      <div class="dash-grupo-total">
+        <span>Total</span>
+        <span>${eur(totalActual)}${totalBudget ? ` / ${eur(totalBudget)}` : ''}</span>
+      </div>
+    `
+  }
+
+  el.innerHTML = renderSeccion('Gastos', gastos, true) + renderSeccion('Ingresos', ingresos, false)
+}
+
+// ── PESTAÑA: INFORMES ─────────────────────────────────────────────────────────
+function renderInformes() {
+  if (!_db) return
+  const { desde, hasta } = periodoAFechas(_infPeriodo)
+
+  if (_infTab === 'gastos') {
+    const data = getInformeCategorias(_db, desde, hasta).filter(r => r.account_class === 'gasto')
+    renderInformeLista(data, 'gasto')
+  } else if (_infTab === 'ingresos') {
+    const data = getInformeCategorias(_db, desde, hasta).filter(r => r.account_class === 'ingreso')
+    renderInformeLista(data, 'ingreso')
+  } else if (_infTab === 'pagadores') {
+    const data = getInformePayees(_db, desde, hasta)
+    renderInformePayees(data)
+  } else if (_infTab === 'patrimonio') {
+    renderInformePatrimonio()
+  }
+}
+
+function renderInformeLista(data, tipo) {
+  const el = document.getElementById('inf-content')
+  if (!data.length) {
+    el.innerHTML = '<p class="tx-vacio">Sin datos para este período</p>'
+    return
+  }
+
+  const totalAbs = data.reduce((s, r) => s + Math.abs(r.total), 0)
+  const cls = tipo === 'gasto' ? 'neg' : 'pos'
+
+  el.innerHTML = data.map(r => {
+    const pct = totalAbs > 0 ? Math.round(Math.abs(r.total) / totalAbs * 100) : 0
+    return `
+      <div class="inf-row">
+        <div class="inf-row-name">${esc(r.name)}</div>
+        <span class="inf-row-num">${r.num}</span>
+        <span class="inf-row-pct">${pct}%</span>
+        <span class="inf-row-amount ${cls}">${eur(Math.abs(r.total))}</span>
+      </div>
+    `
+  }).join('') + `
+    <div class="dash-grupo-total">
+      <span>Total</span>
+      <span class="${cls}">${eur(totalAbs)}</span>
+    </div>
+  `
+}
+
+function renderInformePayees(data) {
+  const el = document.getElementById('inf-content')
+  if (!data.length) {
+    el.innerHTML = '<p class="tx-vacio">Sin pagadores para este período</p>'
+    return
+  }
+
+  const totalAbs = data.reduce((s, r) => s + Math.abs(r.total), 0)
+
+  el.innerHTML = data.map(r => {
+    const pct = totalAbs > 0 ? Math.round(Math.abs(r.total) / totalAbs * 100) : 0
+    return `
+      <div class="inf-row">
+        <div class="inf-row-name">${esc(r.name)}</div>
+        <span class="inf-row-num">${r.num}</span>
+        <span class="inf-row-pct">${pct}%</span>
+        <span class="inf-row-amount neg">${eur(Math.abs(r.total))}</span>
+      </div>
+    `
+  }).join('') + `
+    <div class="dash-grupo-total">
+      <span>Total</span>
+      <span class="neg">${eur(totalAbs)}</span>
+    </div>
+  `
+}
+
+function renderInformePatrimonio() {
+  const el   = document.getElementById('inf-content')
+  const data = getEvolucionPatrimonio(_db)
+
+  if (!data.length) {
+    el.innerHTML = '<p class="tx-vacio">Sin datos de evolución patrimonial</p>'
+    return
+  }
+
+  // Mostrar los últimos 36 meses, más reciente primero
+  const ultimos = data.slice(-36).reverse()
+
+  el.innerHTML = `
+    <div class="inf-row" style="font-weight:600;color:var(--text-muted);font-size:12px;letter-spacing:.04em;text-transform:uppercase;padding:8px 16px;background:var(--bg);">
+      <span class="inf-row-name">Mes</span>
+      <span class="inf-row-pct" style="min-width:80px;text-align:right">Variación</span>
+      <span class="inf-row-amount" style="font-family:var(--font-sans)">Patrimonio</span>
+    </div>
+  ` + ultimos.map((m, i) => {
+    const prev  = i < ultimos.length - 1 ? ultimos[i+1].saldo : 0
+    const delta = m.saldo - prev
+    const [yy, mm] = m.mes.split('-')
+    const label = `${MESES_ES[parseInt(mm)-1]} ${yy}`
+    const deltaStr = delta === 0 ? '—' : (delta > 0 ? '+' : '') + eur(delta)
+    return `
+      <div class="patrimonio-row">
+        <span class="patrimonio-mes">${label}</span>
+        <span class="patrimonio-delta ${delta > 0 ? 'pos' : delta < 0 ? 'neg' : ''}">${deltaStr}</span>
+        <span class="patrimonio-saldo ${m.saldo >= 0 ? 'pos' : 'neg'}">${eur(m.saldo)}</span>
+      </div>
+    `
+  }).join('')
+}
+
+// ── PESTAÑA: AGENDA ───────────────────────────────────────────────────────────
+function renderAgenda() {
+  const el     = document.getElementById('agenda-list')
+  const planes = getPlanificados(_db, 20)
+
+  if (!planes.length) {
+    el.innerHTML = '<p class="tx-vacio">Sin pagos planificados activos</p>'
+    return
+  }
+
+  let lastMes = ''
+  el.innerHTML = planes.map(p => {
+    const [yy, mm, dd] = p.next_date.split('-')
+    const mes = `${MESES_LARGO[parseInt(mm)-1]} ${yy}`
+    let header = ''
+    if (mes !== lastMes) { lastMes = mes; header = `<div class="agenda-mes-sep">${mes}</div>` }
+    const cuenta = [p.institution, p.cuenta_nombre].filter(Boolean).join(' · ')
+    return header + `
+      <div class="agenda-row">
+        <span class="agenda-fecha">${dd}/${mm}</span>
+        <div class="agenda-info">
+          <div class="agenda-nombre">${esc(p.name)}</div>
+          ${cuenta ? `<div class="agenda-cuenta">${esc(cuenta)}</div>` : ''}
+        </div>
+        <span class="agenda-importe ${p.amount_cents >= 0 ? 'pos' : 'neg'}">${eur(p.amount_cents)}</span>
+      </div>
+    `
+  }).join('')
+}
+
+// ── PANTALLA: CUENTA ──────────────────────────────────────────────────────────
+function renderCuenta(cuenta) {
+  const bal = cuenta.balance
+  document.getElementById('screen-cuenta-nombre').textContent = cuenta.name
+  document.getElementById('screen-cuenta-saldo').textContent  = eur(cuenta.balance)
+  document.getElementById('screen-cuenta-saldo').className    =
     'cuenta-saldo-header ' + (bal >= 0 ? 'pos' : 'neg')
 
-  const resumen = getResumenMensual(_db, cuenta.id)
+  // Resumen del mes actual (siempre muestra el mes en curso, independiente del filtro)
+  const resumen = getResumenMensual(_db, cuenta.id || _cuentaId)
   const r = resumen[0] || {}
   document.getElementById('resumen-ingresos').textContent = r.ingresos ? eur(r.ingresos) : '—'
   document.getElementById('resumen-gastos').textContent   = r.gastos   ? eur(r.gastos)   : '—'
   document.getElementById('resumen-num').textContent      =
     r.num_tx ? `${r.num_tx} mov. este mes` : 'Sin movimientos este mes'
 
-  const txs = getTransacciones(_db, cuenta.id, signo)
+  // Transacciones con filtros
+  const txs   = getTransacciones(_db, cuenta.id || _cuentaId, _signo, _periodo)
   const lista = document.getElementById('tx-list')
   lista.innerHTML = ''
 
   if (!txs.length) {
-    lista.innerHTML = '<p class="tx-vacio">Sin movimientos</p>'
+    lista.innerHTML = '<p class="tx-vacio">Sin movimientos en este período</p>'
     return
   }
 
@@ -175,37 +542,93 @@ function renderCuenta(cuenta, signo = '') {
       sep.textContent = fecha(tx.postdate)
       lista.appendChild(sep)
     }
-    const row = document.createElement('div')
+    const row    = document.createElement('div')
     row.className = 'tx-row'
-    const amount = tx.amount_cents / 100
+    const amount  = tx.amount_cents
+
+    const reconcileClass =
+      tx.reconcile_flag === 2 ? 'cleared' :
+      tx.reconcile_flag === 1 ? 'pending' : ''
+
     row.innerHTML = `
-      <span class="tx-concepto">${tx.concepto}</span>
-      <span class="tx-importe ${amount >= 0 ? 'pos' : 'neg'}">${eur(tx.amount_cents)}</span>
+      <div class="tx-info">
+        <span class="tx-concepto">${esc(tx.concepto)}</span>
+        ${tx.categoria ? `<span class="tx-categoria">${esc(tx.categoria)}</span>` : ''}
+      </div>
+      <span class="tx-importe ${amount >= 0 ? 'pos' : 'neg'}">${eur(amount)}</span>
+      ${reconcileClass ? `<span class="tx-reconcile ${reconcileClass}" title="${reconcileClass === 'cleared' ? 'Conciliado' : 'Pendiente'}"></span>` : '<span class="tx-reconcile"></span>'}
     `
     lista.appendChild(row)
   })
 }
 
-// Chips de filtro en cuenta
+// ── Event listeners ───────────────────────────────────────────────────────────
+
+// Navegación inferior
+document.querySelectorAll('.bnav-btn').forEach(btn => {
+  btn.addEventListener('click', () => cambiarTab(btn.dataset.tab))
+})
+
+// Presupuesto: mes anterior / siguiente
+document.getElementById('btn-presu-prev').addEventListener('click', () => {
+  _presuMes = sumarMeses(_presuMes, -1)
+  renderPresupuesto()
+})
+document.getElementById('btn-presu-next').addEventListener('click', () => {
+  _presuMes = sumarMeses(_presuMes, +1)
+  renderPresupuesto()
+})
+
+// Informes: período
+document.querySelectorAll('#inf-periodo-filters .chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#inf-periodo-filters .chip').forEach(b => b.classList.remove('is-active'))
+    btn.classList.add('is-active')
+    _infPeriodo = btn.dataset.infPeriodo
+    renderInformes()
+  })
+})
+
+// Informes: sub-pestaña
+document.querySelectorAll('.inf-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.inf-tab').forEach(b => b.classList.remove('active'))
+    btn.classList.add('active')
+    _infTab = btn.dataset.infTab
+    renderInformes()
+  })
+})
+
+// Cuenta: filtro de período
+document.querySelectorAll('#periodo-filters .chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#periodo-filters .chip').forEach(b => b.classList.remove('is-active'))
+    btn.classList.add('is-active')
+    _periodo = btn.dataset.periodo
+    if (_cuentaActiva) renderCuenta(_cuentaActiva)
+  })
+})
+
+// Cuenta: filtro de signo
 document.querySelectorAll('#tx-filters .chip').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('#tx-filters .chip').forEach(b => b.classList.remove('is-active'))
     btn.classList.add('is-active')
-    const cuentas = getCuentas(_db)
-    const cuenta  = cuentas.find(c => c.id === _cuentaId)
-    if (cuenta) renderCuenta(cuenta, btn.dataset.signo)
+    _signo = btn.dataset.signo
+    if (_cuentaActiva) renderCuenta(_cuentaActiva)
   })
 })
 
 // Volver desde cuenta
 document.getElementById('btn-back').addEventListener('click', () => {
-  mostrar('screen-home')
-  document.querySelectorAll('#tx-filters .chip').forEach((b, i) => {
-    b.classList.toggle('is-active', i === 0)
-  })
+  mostrar('screen-app')
+  _periodo = 'mes'
+  _signo   = ''
+  document.querySelectorAll('#periodo-filters .chip').forEach((b, i) => b.classList.toggle('is-active', i === 0))
+  document.querySelectorAll('#tx-filters .chip').forEach((b, i) => b.classList.toggle('is-active', i === 0))
 })
 
-// Cerrar sesión / recargar archivo
+// Cerrar sesión
 document.getElementById('btn-cerrar').addEventListener('click', () => {
   if (_db) { _db.close(); _db = null }
   document.getElementById('input-password').value = ''
@@ -220,5 +643,7 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {})
 }
 
-// Pre-cargar sql.js en background
+// Pantalla inicial
+mostrar('screen-unlock')
+cambiarTab('inicio')   // activa los estilos del tab inicial sin renderizar
 ensureSQL().catch(() => {})
