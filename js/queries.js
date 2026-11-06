@@ -91,6 +91,10 @@ function getCuentasDashboard(db) {
            a.security_id
     FROM accounts a
     WHERE a.account_class IN ('activo','pasivo') AND a.is_closed = 0
+      AND NOT EXISTS (
+        SELECT 1 FROM accounts c WHERE c.parent_id = a.id
+          AND c.account_class IN ('activo','pasivo') AND c.is_closed = 0
+      )
     ORDER BY a.account_class,
       CASE WHEN a.security_id IS NOT NULL THEN 1 ELSE 0 END,
       CASE WHEN a.institution IS NULL OR a.institution = '' THEN 1 ELSE 0 END,
