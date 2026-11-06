@@ -10,7 +10,7 @@ let _cuentaActiva = null
 let _periodo      = 'mes'
 let _signo        = ''
 
-let _tabActivo    = 'inicio'
+let _tabActivo    = 'cuentas'
 let _presuMes     = (() => {
   const h = new Date()
   return `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}`
@@ -89,7 +89,6 @@ function cambiarTab(tab) {
 
 function renderTab(tab) {
   switch (tab) {
-    case 'inicio':      renderInicio();      break
     case 'cuentas':     renderCuentas();     break
     case 'presupuesto': renderPresupuesto(); break
     case 'informes':    renderInformes();    break
@@ -167,7 +166,7 @@ async function abrirArchivo() {
     const SQL = await ensureSQL()
     _db = new SQL.Database(dbBytes)
 
-    cambiarTab('inicio')
+    cambiarTab('cuentas')
     mostrar('screen-app')
     setStatus('')
   } catch (e) {
@@ -180,136 +179,82 @@ async function abrirArchivo() {
   }
 }
 
-// ── PESTAÑA: INICIO ───────────────────────────────────────────────────────────
-function renderInicio() {
-  const neto  = getNetWorth(_db) * 100  // en céntimos para eur()
-  const stats = getStatsInicio(_db)
-  const { activo, pasivo } = getCuentasDashboard(_db)
-
-  // Patrimonio neto
-  document.getElementById('networth-value').textContent = eur(neto)
-  document.getElementById('networth-value').className =
-    'networth-value' + (neto >= 0 ? ' pos' : ' neg')
-
-  // Stat tiles
-  document.getElementById('inicio-stats').innerHTML = `
-    <div class="stat-tile">
-      <div class="stat-tile-val">${stats.numCuentas}</div>
-      <div class="stat-tile-label">cuentas</div>
-    </div>
-    <div class="stat-tile">
-      <div class="stat-tile-val">${stats.numEntidades}</div>
-      <div class="stat-tile-label">entidades</div>
-    </div>
-  `
-
-  // Dashboard de cuentas (como el desktop)
-  const renderGrupo = (titulo, items) => {
-    if (!items.length) return ''
-    const total = items.reduce((s, i) => s + i.balance, 0)
-    return `
-      <div class="dash-section-title">${titulo}</div>
-      ${items.map(i => {
-        const entidad = [i.institution, i.type_name].filter(Boolean).join(' · ')
-        return `
-          <div class="dash-cuenta-row">
-            <div class="dash-cuenta-info">
-              <div class="dash-cuenta-nombre">${esc(i.name)}</div>
-              ${entidad ? `<div class="dash-cuenta-entidad">${esc(entidad)}</div>` : ''}
-            </div>
-            <span class="cuenta-saldo ${i.balance >= 0 ? 'pos' : 'neg'}">${eur(i.balance)}</span>
-          </div>
-        `
-      }).join('')}
-      <div class="dash-grupo-total">
-        <span>Total ${titulo}</span>
-        <span class="cuenta-saldo ${total >= 0 ? 'pos' : 'neg'}">${eur(total)}</span>
-      </div>
-    `
-  }
-
-  document.getElementById('inicio-dashboard').innerHTML =
-    renderGrupo('Activo', activo) + renderGrupo('Pasivo', pasivo)
-
-  // Próximos planificados
-  const planes = getPlanificados(_db, 8)
-  const planEl = document.getElementById('inicio-planificados')
-  if (planes.length) {
-    let lastMes = ''
-    planEl.innerHTML = `<div class="dash-section-title">Próximos planificados</div>` +
-      planes.map(p => {
-        const [yy, mm, dd] = p.next_date.split('-')
-        const mes = `${MESES_LARGO[parseInt(mm)-1]} ${yy}`
-        let header = ''
-        if (mes !== lastMes) { lastMes = mes; header = `<div class="agenda-mes-sep">${mes}</div>` }
-        const cuenta = [p.institution, p.cuenta_nombre].filter(Boolean).join(' · ')
-        return header + `
-          <div class="agenda-row">
-            <span class="agenda-fecha">${dd}/${mm}</span>
-            <div class="agenda-info">
-              <div class="agenda-nombre">${esc(p.name)}</div>
-              ${cuenta ? `<div class="agenda-cuenta">${esc(cuenta)}</div>` : ''}
-            </div>
-            <span class="agenda-importe ${p.amount_cents >= 0 ? 'pos' : 'neg'}">${eur(p.amount_cents)}</span>
-          </div>
-        `
-      }).join('')
-    planEl.classList.remove('hidden')
-  } else {
-    planEl.classList.add('hidden')
-  }
-}
-
 // ── PESTAÑA: CUENTAS ──────────────────────────────────────────────────────────
 function renderCuentas() {
-  const raices  = getCuentasArbol(_db)
-  const activos = raices.filter(r => r.account_class === 'activo')
-  const pasivos = raices.filter(r => r.account_class === 'pasivo')
+  const neto = getNetWorth(_db) * 100
+  const { activo, pasivo } = getCuentasDashboard(_db)
 
   const lista = document.getElementById('accounts-list')
   lista.innerHTML = ''
 
-  if (activos.length) {
-    lista.insertAdjacentHTML('beforeend', '<div class="grupo-titulo">Activo</div>')
-    activos.forEach(n => renderNodo(lista, n, 0))
+  // Patrimonio neto al inicio
+  lista.insertAdjacentHTML('beforeend', `
+    <div class="networth-card">
+      <span class="networth-label">Patrimonio neto</span>
+      <span class="networth-value ${neto >= 0 ? 'pos' : 'neg'}">${eur(neto)}</span>
+    </div>
+  `)
+
+  const renderSeccion = (titulo, items) => {
+    if (!items.length) return
+    const bancos = items.filter(i => !i.security_id)
+    const invers = items.filter(i =>  i.security_id)
+    const total  = items.reduce((s, i) => s + i.balance, 0)
+
+    lista.insertAdjacentHTML('beforeend', `<div class="grupo-titulo">${titulo}</div>`)
+
+    // Cuentas bancarias agrupadas por entidad
+    let lastInst = Symbol()
+    bancos.forEach(i => {
+      const inst = i.institution || ''
+      if (inst !== lastInst) {
+        if (inst) lista.insertAdjacentHTML('beforeend', `<div class="inst-sep">${esc(inst)}</div>`)
+        lastInst = inst
+      }
+      const div = document.createElement('div')
+      div.className = 'cuenta-row'
+      div.innerHTML = `
+        <span class="cuenta-nombre">${esc(i.name)}</span>
+        <span class="cuenta-saldo ${i.balance >= 0 ? 'pos' : 'neg'}">${eur(i.balance)}</span>
+      `
+      div.addEventListener('click', () => abrirCuenta(i))
+      lista.appendChild(div)
+    })
+
+    // Valores bursátiles
+    if (invers.length) {
+      lista.insertAdjacentHTML('beforeend', '<div class="inst-sep">Inversiones</div>')
+      invers.forEach(i => {
+        const div = document.createElement('div')
+        div.className = 'cuenta-row'
+        div.innerHTML = `
+          <span class="cuenta-nombre">${esc(i.name)}</span>
+          <span class="cuenta-saldo ${i.balance >= 0 ? 'pos' : 'neg'}">${eur(i.balance)}</span>
+        `
+        div.addEventListener('click', () => abrirCuenta(i))
+        lista.appendChild(div)
+      })
+    }
+
+    lista.insertAdjacentHTML('beforeend', `
+      <div class="grupo-total">
+        <span>Total ${titulo}</span>
+        <span class="cuenta-saldo ${total >= 0 ? 'pos' : 'neg'}">${eur(total)}</span>
+      </div>
+    `)
   }
-  if (pasivos.length) {
-    lista.insertAdjacentHTML('beforeend', '<div class="grupo-titulo">Pasivo</div>')
-    pasivos.forEach(n => renderNodo(lista, n, 0))
-  }
+
+  renderSeccion('Activo', activo)
+  renderSeccion('Pasivo', pasivo)
 }
 
-function renderNodo(lista, nodo, depth) {
-  if (nodo.children.length) {
-    const div = document.createElement('div')
-    div.className = 'grupo-row'
-    div.style.paddingLeft = `${16 + depth * 14}px`
-    const bal = nodo.balanceTotal
-    div.innerHTML = `
-      <span class="grupo-row-nombre">${esc(nodo.name)}</span>
-      <span class="grupo-row-saldo ${bal >= 0 ? 'pos' : 'neg'}">${eur(bal)}</span>
-    `
-    lista.appendChild(div)
-    nodo.children.forEach(c => renderNodo(lista, c, depth + 1))
-  } else if (nodo.hasMov) {
-    const div = document.createElement('div')
-    div.className = 'cuenta-row'
-    div.style.paddingLeft = `${16 + depth * 14}px`
-    const bal = nodo.balance
-    div.innerHTML = `
-      <span class="cuenta-nombre">${esc(nodo.name)}</span>
-      <span class="cuenta-saldo ${bal >= 0 ? 'pos' : 'neg'}">${eur(bal)}</span>
-    `
-    div.addEventListener('click', () => {
-      _cuentaId     = nodo.id
-      _cuentaActiva = nodo
-      _periodo      = 'mes'
-      _signo        = ''
-      renderCuenta(nodo)
-      mostrar('screen-cuenta')
-    })
-    lista.appendChild(div)
-  }
+function abrirCuenta(cuenta) {
+  _cuentaId     = cuenta.id
+  _cuentaActiva = cuenta
+  _periodo      = 'mes'
+  _signo        = ''
+  renderCuenta(cuenta)
+  mostrar('screen-cuenta')
 }
 
 // ── PESTAÑA: PRESUPUESTO ──────────────────────────────────────────────────────

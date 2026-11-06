@@ -49,8 +49,8 @@
 
     <div class="tab-container">
 
-      <!-- ── PESTAÑA: INICIO ───────────────────────────────────────────────── -->
-      <div id="tab-inicio" class="tab-panel">
+      <!-- ── PESTAÑA: CUENTAS ──────────────────────────────────────────────── -->
+      <div id="tab-cuentas" class="tab-panel">
         <header class="app-header">
           <span class="app-title">FinLock</span>
           <button id="btn-cerrar" class="btn-icon" title="Cerrar sesión">
@@ -60,22 +60,6 @@
               <line x1="21" y1="12" x2="9" y2="12"/>
             </svg>
           </button>
-        </header>
-        <div class="tab-scroll" id="inicio-scroll">
-          <div class="networth-card">
-            <span class="networth-label">Patrimonio neto</span>
-            <span id="networth-value" class="networth-value">—</span>
-          </div>
-          <div id="inicio-stats" class="stats-row"></div>
-          <div id="inicio-dashboard"></div>
-          <div id="inicio-planificados"></div>
-        </div>
-      </div>
-
-      <!-- ── PESTAÑA: CUENTAS ──────────────────────────────────────────────── -->
-      <div id="tab-cuentas" class="tab-panel">
-        <header class="app-header">
-          <span class="app-title">Cuentas</span>
         </header>
         <div id="accounts-list" class="tab-scroll"></div>
       </div>
@@ -129,14 +113,7 @@
 
     <!-- ── Navegación inferior ──────────────────────────────────────────────── -->
     <nav class="bottom-nav">
-      <button class="bnav-btn active" data-tab="inicio">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
-          <polyline points="9 22 9 12 15 12 15 22"/>
-        </svg>
-        <span>Inicio</span>
-      </button>
-      <button class="bnav-btn" data-tab="cuentas">
+      <button class="bnav-btn active" data-tab="cuentas">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <rect x="1" y="4" width="22" height="16" rx="2"/>
           <line x1="1" y1="10" x2="23" y2="10"/>

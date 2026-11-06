@@ -92,7 +92,9 @@ function getCuentasDashboard(db) {
     FROM accounts a
     WHERE a.account_class IN ('activo','pasivo') AND a.is_closed = 0
     ORDER BY a.account_class,
-      CASE a.account_class WHEN 'activo' THEN a.is_favorite * -1 ELSE 0 END,
+      CASE WHEN a.security_id IS NOT NULL THEN 1 ELSE 0 END,
+      CASE WHEN a.institution IS NULL OR a.institution = '' THEN 1 ELSE 0 END,
+      COALESCE(a.institution,''),
       a.name
   `).map(c => ({ ...c, balance: balMap[c.id] || 0 }))
    .filter(c => !(c.security_id && (balMap[c.id] || 0) === 0))
