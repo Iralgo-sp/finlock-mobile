@@ -1,0 +1,417 @@
+/* ── Variables ───────────────────────────────────────────────────────────── */
+:root {
+  --bg:          #EBEEE6;
+  --surface:     #F9FAF6;
+  --surface-2:   #FFFFFF;
+  --border:      #D6DACE;
+  --text:        #1E2A22;
+  --text-muted:  #57644F;
+  --primary:     #303E68;
+  --positive:    #2F6B4F;
+  --negative:    #A23B2E;
+  --brass:       #9C7A3C;
+  --font-sans:   system-ui, 'Segoe UI', sans-serif;
+  --font-serif:  ui-serif, Georgia, 'Times New Roman', serif;
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── Reset / base ────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* ── Pantallas ───────────────────────────────────────────────────────────── */
+.screen {
+  display: none;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+.screen.active { display: flex; }
+
+/* ── Pantalla: Desbloquear ───────────────────────────────────────────────── */
+.unlock-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+  padding: calc(80px + var(--safe-top)) 24px 24px;
+  max-width: 400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.unlock-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  color: var(--primary);
+}
+
+.unlock-brand {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.field-input {
+  display: block;
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 15px;
+  font-family: var(--font-sans);
+  margin-bottom: 12px;
+  appearance: none;
+}
+.field-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
+}
+
+.status-msg {
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  text-align: center;
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  color: var(--primary);
+}
+.status-error {
+  background: color-mix(in srgb, var(--negative) 12%, var(--surface));
+  color: var(--negative);
+}
+.hidden { display: none !important; }
+
+/* ── Botones ─────────────────────────────────────────────────────────────── */
+.btn-primary {
+  display: block;
+  width: 100%;
+  height: 46px;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: .02em;
+}
+.btn-primary:active { opacity: .85; }
+.btn-primary:disabled { opacity: .5; cursor: default; }
+
+.btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.btn-icon:active { background: var(--border); }
+
+/* ── Cabecera de app ─────────────────────────────────────────────────────── */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: calc(12px + var(--safe-top)) 16px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.app-title {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.app-header--cuenta {
+  gap: 4px;
+}
+
+.btn-back {
+  color: var(--primary);
+}
+
+.cuenta-header-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.cuenta-header-nombre {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.cuenta-saldo-header {
+  font-family: var(--font-serif);
+  font-size: 17px;
+}
+
+/* ── Tarjeta patrimonio ──────────────────────────────────────────────────── */
+.networth-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.networth-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.networth-value {
+  font-family: var(--font-serif);
+  font-size: 36px;
+  font-weight: 400;
+  color: var(--text);
+}
+.networth-value.pos { color: var(--positive); }
+.networth-value.neg { color: var(--negative); }
+
+/* ── Lista de cuentas ────────────────────────────────────────────────────── */
+.accounts-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: var(--safe-bottom);
+}
+
+.grupo-titulo {
+  padding: 14px 16px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.cuenta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-soft, var(--border));
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  gap: 12px;
+}
+.cuenta-row:active { background: color-mix(in srgb, var(--primary) 8%, var(--surface)); }
+
+.cuenta-nombre {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cuenta-saldo {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 400;
+  flex-shrink: 0;
+}
+.cuenta-saldo.pos, .cuenta-saldo-header.pos { color: var(--positive); }
+.cuenta-saldo.neg, .cuenta-saldo-header.neg { color: var(--negative); }
+
+/* ── Resumen mensual ─────────────────────────────────────────────────────── */
+.resumen-mes {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.resumen-item {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.resumen-item--center { align-items: center; }
+.resumen-item--right  { align-items: flex-end; }
+
+.resumen-sep {
+  width: 1px;
+  height: 32px;
+  background: var(--border);
+  flex-shrink: 0;
+  margin: 0 12px;
+}
+
+.resumen-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.resumen-valor {
+  font-family: var(--font-serif);
+  font-size: 15px;
+}
+.resumen-valor.pos { color: var(--positive); }
+.resumen-valor.neg { color: var(--negative); }
+
+.resumen-num {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── Chips de filtro ─────────────────────────────────────────────────────── */
+.tx-filters {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.chip {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+}
+.chip.is-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* ── Lista de transacciones ──────────────────────────────────────────────── */
+.tx-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: var(--safe-bottom);
+}
+
+.tx-date-sep {
+  padding: 10px 16px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.tx-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-soft, var(--border));
+}
+
+.tx-concepto {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tx-importe {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  flex-shrink: 0;
+}
+.tx-importe.pos { color: var(--positive); }
+.tx-importe.neg { color: var(--negative); }
+
+.tx-vacio {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* ── pos/neg genérico ────────────────────────────────────────────────────── */
+.pos { color: var(--positive); }
+.neg { color: var(--negative); }

@@ -1,0 +1,24 @@
+{
+  "name": "FinLock Mobile",
+  "short_name": "FinLock",
+  "description": "Visualiza tus finanzas de FinLock en el móvil",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#EBEEE6",
+  "theme_color": "#303E68",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
