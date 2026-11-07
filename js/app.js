@@ -7,7 +7,7 @@ let _archivos   = []
 let _archivoId  = null
 let _cuentaId   = null
 let _cuentaActiva = null
-let _periodo      = 'mes'
+let _periodo      = 'todo'
 let _signo        = ''
 
 let _tabActivo    = 'cuentas'
@@ -592,9 +592,9 @@ document.querySelectorAll('#tx-filters .chip').forEach(btn => {
 // Volver desde cuenta
 document.getElementById('btn-back').addEventListener('click', () => {
   mostrar('screen-app')
-  _periodo = 'mes'
+  _periodo = 'todo'
   _signo   = ''
-  document.querySelectorAll('#periodo-filters .chip').forEach((b, i) => b.classList.toggle('is-active', i === 0))
+  document.querySelectorAll('#periodo-filters .chip').forEach(b => b.classList.toggle('is-active', b.dataset.periodo === 'todo'))
   document.querySelectorAll('#tx-filters .chip').forEach((b, i) => b.classList.toggle('is-active', i === 0))
 })
 
