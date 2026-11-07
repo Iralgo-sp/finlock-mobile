@@ -12,11 +12,32 @@ function rows(db, sql, params = []) {
 function buildBalanceMap(db) {
   const balMap = {}
 
-  // 1. Saldo base para todas las cuentas (coste para inversiones, saldo real para el resto)
+  // 1. Saldo base para todas las cuentas en su divisa nativa
   const br = db.exec('SELECT account_id, SUM(amount_cents) FROM splits GROUP BY account_id')
   if (br.length) for (const [id, bal] of br[0].values) balMap[id] = bal || 0
 
-  // 2. Sobrescribir cuentas de inversión con valor de mercado actual
+  // 1b. Convertir saldos de cuentas no-EUR a EUR usando el tipo de cambio más reciente.
+  //     fx_rates.rate_micro = unidades de divisa por 1 €, en millonésimas.
+  //     EUR_cents = native_cents × 1 000 000 / rate_micro
+  try {
+    const nonEur = rows(db, `
+      SELECT a.id, f.rate_micro
+      FROM accounts a
+      JOIN fx_rates f ON f.currency = a.currency
+      WHERE a.account_class IN ('activo','pasivo') AND COALESCE(a.is_closed,0) = 0
+        AND a.currency IS NOT NULL AND a.currency != '' AND a.currency != 'EUR'
+        AND a.security_id IS NULL
+        AND f.fecha = (SELECT MAX(f2.fecha) FROM fx_rates f2 WHERE f2.currency = a.currency)
+    `)
+    for (const a of nonEur) {
+      if (a.rate_micro && balMap[a.id] != null)
+        balMap[a.id] = Math.round(balMap[a.id] * 1e6 / a.rate_micro)
+    }
+  } catch (_) {}
+
+  // 2. Sobrescribir cuentas de inversión con valor de mercado actual.
+  //    Posiciones residuales (< 1 €) se tratan como cero para no mostrar
+  //    títulos prácticamente vendidos.
   try {
     const inv = rows(db, `
       SELECT a.id,
@@ -29,10 +50,9 @@ function buildBalanceMap(db) {
     `)
     for (const acc of inv) {
       if (acc.price_micro != null && acc.shares_micro) {
-        // shares_micro / 1e6 × price_micro / 1e6 = EUR → × 100 = céntimos
-        balMap[acc.id] = Math.round((acc.shares_micro / 1e6) * (acc.price_micro / 1e6) * 100)
+        const val = Math.round((acc.shares_micro / 1e6) * (acc.price_micro / 1e6) * 100)
+        balMap[acc.id] = Math.abs(val) >= 100 ? val : 0  // residuos < 1 € → 0
       } else {
-        // Vendidas completamente (0 acciones): valor de mercado = 0
         balMap[acc.id] = 0
       }
     }
@@ -41,42 +61,22 @@ function buildBalanceMap(db) {
   return balMap
 }
 
+// Patrimonio neto: suma de todos los saldos activo/pasivo convertidos a EUR.
+// Reutiliza buildBalanceMap para consistencia con la vista de cuentas.
 function getNetWorth(db) {
-  // Cuentas regulares
-  const r = rows(db, `
-    SELECT SUM(s.amount_cents) AS neto
-    FROM splits s
-    JOIN accounts a ON a.id = s.account_id
-    WHERE a.account_class IN ('activo','pasivo') AND a.is_closed = 0
-      AND a.security_id IS NULL
+  const balMap = rows(db, `
+    SELECT id FROM accounts
+    WHERE account_class IN ('activo','pasivo') AND COALESCE(is_closed,0) = 0
   `)
-  let neto = r[0]?.neto ?? 0
-
-  // Cuentas de inversión: acciones × precio actual
-  try {
-    const inv = rows(db, `
-      SELECT
-        COALESCE((SELECT SUM(s.shares_micro) FROM splits s WHERE s.account_id = a.id), 0) AS shares_micro,
-        (SELECT COALESCE(p.eur_price_micro, p.price_micro)
-         FROM prices p WHERE p.security_id = a.security_id
-         ORDER BY p.price_date DESC LIMIT 1) AS price_micro
-      FROM accounts a
-      WHERE a.security_id IS NOT NULL AND a.is_closed = 0
-        AND a.account_class IN ('activo','pasivo')
-    `)
-    for (const acc of inv) {
-      if (acc.price_micro != null && acc.shares_micro) {
-        neto += Math.round((acc.shares_micro / 1e6) * (acc.price_micro / 1e6) * 100)
-      }
-    }
-  } catch (_) {}
-
+  const bm = buildBalanceMap(db)
+  let neto = 0
+  balMap.forEach(a => { neto += bm[a.id] || 0 })
   return neto / 100
 }
 
 // Estadísticas de inicio: num cuentas abiertas, num entidades
 function getStatsInicio(db) {
-  const nc = rows(db, `SELECT COUNT(*) as n FROM accounts WHERE account_class IN ('activo','pasivo') AND is_closed = 0`)[0]?.n || 0
+  const nc = rows(db, `SELECT COUNT(*) as n FROM accounts WHERE account_class IN ('activo','pasivo') AND COALESCE(is_closed,0) = 0`)[0]?.n || 0
   const ne = rows(db, `SELECT COUNT(DISTINCT institution) as n FROM accounts WHERE institution IS NOT NULL AND institution != ''`)[0]?.n || 0
   return { numCuentas: nc, numEntidades: ne }
 }
@@ -91,7 +91,7 @@ function getCuentasDashboard(db) {
            COALESCE(a.currency,'EUR') AS currency, a.is_favorite, a.iban, a.number,
            a.security_id, a.parent_id
     FROM accounts a
-    WHERE a.account_class IN ('activo','pasivo') AND a.is_closed = 0
+    WHERE a.account_class IN ('activo','pasivo') AND COALESCE(a.is_closed,0) = 0
     ORDER BY a.account_class,
       CASE WHEN a.institution IS NULL OR a.institution = '' THEN 1 ELSE 0 END,
       COALESCE(a.institution,''), a.name
@@ -150,7 +150,7 @@ function getCuentasArbol(db) {
     SELECT a.id, a.name, a.parent_id, a.account_class, COALESCE(a.currency,'EUR') AS currency,
            a.security_id
     FROM accounts a
-    WHERE a.account_class IN ('activo','pasivo') AND a.is_closed = 0
+    WHERE a.account_class IN ('activo','pasivo') AND COALESCE(a.is_closed,0) = 0
     ORDER BY
       CASE a.account_class WHEN 'activo' THEN 1 WHEN 'pasivo' THEN 2 ELSE 3 END,
       a.name
@@ -207,7 +207,7 @@ function getPresupuesto(db, mes) {
         (SELECT b.amount_cents FROM budget b WHERE b.category_id = a.id AND b.modo = 'desde' AND b.mes <= ? ORDER BY b.mes DESC LIMIT 1)
       ) AS budget_cents
     FROM accounts a
-    WHERE a.account_class IN ('gasto','ingreso') AND a.is_closed = 0
+    WHERE a.account_class IN ('gasto','ingreso') AND COALESCE(a.is_closed,0) = 0
     ORDER BY a.account_class, a.name
   `, [mes, mes])
 
@@ -268,7 +268,7 @@ function getEvolucionPatrimonio(db) {
     FROM splits s
     JOIN transactions t ON t.id = s.transaction_id
     JOIN accounts a ON a.id = s.account_id
-    WHERE a.account_class IN ('activo','pasivo') AND a.is_closed = 0
+    WHERE a.account_class IN ('activo','pasivo') AND COALESCE(a.is_closed,0) = 0
     GROUP BY mes ORDER BY mes
   `)
   let acum = 0
