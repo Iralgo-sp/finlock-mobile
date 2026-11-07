@@ -24,7 +24,15 @@ const fmtFecha = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'shor
 const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 const MESES_LARGO = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
-function eur(cents) { return fmtEUR.format(cents / 100) }
+function eur(cents) {
+  if (cents == null) return '—'
+  const abs   = Math.abs(Math.round(cents))
+  const euros = Math.floor(abs / 100)
+  const centi = abs % 100
+  const intS  = euros.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  const decS  = centi.toString().padStart(2, '0')
+  return (cents < 0 ? '-' : '') + intS + ',' + decS + ' €'
+}
 function fecha(iso) { return fmtFecha.format(new Date(iso + 'T00:00:00')) }
 function esc(str)   { return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
 
@@ -197,15 +205,15 @@ function renderCuentas() {
 
   const renderSeccion = (titulo, items) => {
     if (!items.length) return
-    const bancos = items.filter(i => !i.security_id)
-    const invers = items.filter(i =>  i.security_id)
-    const total  = items.reduce((s, i) => s + i.balance, 0)
+    const regular = items.filter(i => !i.isBroker)
+    const brokers  = items.filter(i =>  i.isBroker)
+    const total    = items.reduce((s, i) => s + i.balance, 0)
 
     lista.insertAdjacentHTML('beforeend', `<div class="grupo-titulo">${titulo}</div>`)
 
-    // Cuentas bancarias agrupadas por entidad
+    // Cuentas regulares agrupadas por entidad
     let lastInst = Symbol()
-    bancos.forEach(i => {
+    regular.forEach(i => {
       const inst = i.institution || ''
       if (inst !== lastInst) {
         if (inst) lista.insertAdjacentHTML('beforeend', `<div class="inst-sep">${esc(inst)}</div>`)
@@ -221,20 +229,37 @@ function renderCuentas() {
       lista.appendChild(div)
     })
 
-    // Valores bursátiles
-    if (invers.length) {
-      lista.insertAdjacentHTML('beforeend', '<div class="inst-sep">Inversiones</div>')
-      invers.forEach(i => {
-        const div = document.createElement('div')
-        div.className = 'cuenta-row'
-        div.innerHTML = `
-          <span class="cuenta-nombre">${esc(i.name)}</span>
-          <span class="cuenta-saldo ${i.balance >= 0 ? 'pos' : 'neg'}">${eur(i.balance)}</span>
+    // Cuentas de inversión (broker) como filas colapsables
+    brokers.forEach(broker => {
+      const brokerRow = document.createElement('div')
+      brokerRow.className = 'cuenta-row cuenta-row--broker'
+      brokerRow.innerHTML = `
+        <span class="broker-chevron"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
+        <span class="cuenta-nombre">${esc(broker.name)}</span>
+        <span class="cuenta-saldo ${broker.balance >= 0 ? 'pos' : 'neg'}">${eur(broker.balance)}</span>
+      `
+      const posWrap = document.createElement('div')
+      posWrap.className = 'broker-positions'
+
+      broker.positions.forEach(pos => {
+        const posRow = document.createElement('div')
+        posRow.className = 'cuenta-row cuenta-row--position'
+        posRow.innerHTML = `
+          <span class="cuenta-nombre cuenta-nombre--pos">${esc(pos.name)}</span>
+          <span class="cuenta-saldo ${pos.balance >= 0 ? 'pos' : 'neg'}">${eur(pos.balance)}</span>
         `
-        div.addEventListener('click', () => abrirCuenta(i))
-        lista.appendChild(div)
+        posRow.addEventListener('click', () => abrirCuenta(pos))
+        posWrap.appendChild(posRow)
       })
-    }
+
+      brokerRow.addEventListener('click', () => {
+        const open = brokerRow.classList.toggle('is-open')
+        posWrap.classList.toggle('is-open', open)
+      })
+
+      lista.appendChild(brokerRow)
+      lista.appendChild(posWrap)
+    })
 
     lista.insertAdjacentHTML('beforeend', `
       <div class="grupo-total">

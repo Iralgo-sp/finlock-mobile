@@ -81,31 +81,64 @@ function getStatsInicio(db) {
   return { numCuentas: nc, numEntidades: ne }
 }
 
-// Lista plana de cuentas para el dashboard de Inicio (como en el desktop)
+// Lista de cuentas para el dashboard: cuentas regulares planas +
+// cuentas de inversión colapsables (broker → posiciones).
 function getCuentasDashboard(db) {
   const balMap = buildBalanceMap(db)
 
-  const list = rows(db, `
+  const all = rows(db, `
     SELECT a.id, a.name, a.account_class, a.institution, a.type_name,
            COALESCE(a.currency,'EUR') AS currency, a.is_favorite, a.iban, a.number,
-           a.security_id
+           a.security_id, a.parent_id
     FROM accounts a
     WHERE a.account_class IN ('activo','pasivo') AND a.is_closed = 0
-      AND NOT EXISTS (
-        SELECT 1 FROM accounts c WHERE c.parent_id = a.id
-          AND c.account_class IN ('activo','pasivo') AND c.is_closed = 0
-      )
     ORDER BY a.account_class,
-      CASE WHEN a.security_id IS NOT NULL THEN 1 ELSE 0 END,
       CASE WHEN a.institution IS NULL OR a.institution = '' THEN 1 ELSE 0 END,
-      COALESCE(a.institution,''),
-      a.name
+      COALESCE(a.institution,''), a.name
   `).map(c => ({ ...c, balance: balMap[c.id] || 0 }))
-   .filter(c => !(c.security_id && (balMap[c.id] || 0) === 0))
+
+  const byId = {}
+  all.forEach(a => { byId[a.id] = a })
+
+  // Conjunto de IDs que tienen hijos activo/pasivo abiertos
+  const parentSet = new Set(all.map(a => a.parent_id).filter(Boolean))
+
+  // Posiciones de inversión: tienen security_id y balance distinto de 0
+  const positions = all.filter(a => a.security_id && a.balance !== 0)
+
+  // Agrupar posiciones por cuenta-broker padre
+  const posByBroker = {}
+  positions.forEach(p => {
+    if (p.parent_id && byId[p.parent_id]) {
+      ;(posByBroker[p.parent_id] = posByBroker[p.parent_id] || []).push(p)
+    }
+  })
+  const brokerIds = new Set(Object.keys(posByBroker))
+
+  // Brokers: su balance es la suma a precio de mercado de sus posiciones
+  const brokers = [...brokerIds].map(pid => {
+    const poss  = posByBroker[pid]
+    const total = poss.reduce((s, p) => s + p.balance, 0)
+    return { ...byId[pid], balance: total, positions: poss, isBroker: true }
+  }).filter(b => b.balance !== 0 || b.positions.length > 0)
+
+  // Cuentas regulares: hoja (sin hijos), sin security_id, no es broker
+  const regular = all.filter(a =>
+    !a.security_id &&
+    !brokerIds.has(a.id) &&
+    !parentSet.has(a.id)
+  ).map(a => ({ ...a, positions: [] }))
+
+  // Posiciones huérfanas (sin broker padre en la BD): mostrar individualmente
+  const orphans = positions
+    .filter(p => !(p.parent_id && byId[p.parent_id]))
+    .map(p => ({ ...p, positions: [], isBroker: false }))
+
+  const combined = [...regular, ...brokers, ...orphans]
 
   return {
-    activo: list.filter(c => c.account_class === 'activo'),
-    pasivo: list.filter(c => c.account_class === 'pasivo')
+    activo: combined.filter(c => c.account_class === 'activo'),
+    pasivo: combined.filter(c => c.account_class === 'pasivo')
   }
 }
 

@@ -878,3 +878,27 @@ html, body {
 /* ── pos/neg genérico ────────────────────────────────────────────────────── */
 .pos { color: var(--positive); }
 .neg { color: var(--negative); }
+
+/* ── Cuentas de inversión (broker colapsable) ────────────────────────────── */
+.cuenta-row--broker { cursor: pointer; }
+.cuenta-row--broker .cuenta-nombre { font-weight: 600; }
+
+.broker-chevron {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  margin-right: 4px;
+  transition: transform .2s;
+}
+.cuenta-row--broker.is-open .broker-chevron { transform: rotate(180deg); }
+
+.broker-positions          { display: none; }
+.broker-positions.is-open  { display: block; }
+
+.cuenta-row--position { padding-left: 44px; }
+.cuenta-nombre--pos {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
