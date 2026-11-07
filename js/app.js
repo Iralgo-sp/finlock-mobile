@@ -205,60 +205,61 @@ function renderCuentas() {
 
   const renderSeccion = (titulo, items) => {
     if (!items.length) return
-    const regular = items.filter(i => !i.isBroker)
-    const brokers  = items.filter(i =>  i.isBroker)
-    const total    = items.reduce((s, i) => s + i.balance, 0)
+    const total = items.reduce((s, i) => s + i.balance, 0)
 
     lista.insertAdjacentHTML('beforeend', `<div class="grupo-titulo">${titulo}</div>`)
 
-    // Cuentas regulares agrupadas por entidad
-    let lastInst = Symbol()
-    regular.forEach(i => {
-      const inst = i.institution || ''
-      if (inst !== lastInst) {
-        if (inst) lista.insertAdjacentHTML('beforeend', `<div class="inst-sep">${esc(inst)}</div>`)
-        lastInst = inst
-      }
-      const div = document.createElement('div')
-      div.className = 'cuenta-row'
-      div.innerHTML = `
-        <span class="cuenta-nombre">${esc(i.name)}</span>
-        <span class="cuenta-saldo ${i.balance >= 0 ? 'pos' : 'neg'}">${eur(i.balance)}</span>
-      `
-      div.addEventListener('click', () => abrirCuenta(i))
-      lista.appendChild(div)
-    })
-
-    // Cuentas de inversión (broker) como filas colapsables
-    brokers.forEach(broker => {
-      const brokerRow = document.createElement('div')
-      brokerRow.className = 'cuenta-row cuenta-row--broker'
-      brokerRow.innerHTML = `
-        <span class="broker-chevron"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
-        <span class="cuenta-nombre">${esc(broker.name)}</span>
-        <span class="cuenta-saldo ${broker.balance >= 0 ? 'pos' : 'neg'}">${eur(broker.balance)}</span>
-      `
-      const posWrap = document.createElement('div')
-      posWrap.className = 'broker-positions'
-
-      broker.positions.forEach(pos => {
-        const posRow = document.createElement('div')
-        posRow.className = 'cuenta-row cuenta-row--position'
-        posRow.innerHTML = `
-          <span class="cuenta-nombre cuenta-nombre--pos">${esc(pos.name)}</span>
-          <span class="cuenta-saldo ${pos.balance >= 0 ? 'pos' : 'neg'}">${eur(pos.balance)}</span>
+    // Renderizado recursivo: grupos colapsables + hojas clicables
+    function renderNodo(nodo, container, depth) {
+      if (nodo.isGroup) {
+        const groupRow = document.createElement('div')
+        groupRow.className = 'cuenta-row cuenta-row--broker'
+        if (depth > 0) groupRow.style.paddingLeft = (16 + depth * 16) + 'px'
+        groupRow.innerHTML = `
+          <span class="broker-chevron"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
+          <span class="cuenta-nombre">${esc(nodo.name)}</span>
+          <span class="cuenta-saldo ${nodo.balance >= 0 ? 'pos' : 'neg'}">${eur(nodo.balance)}</span>
         `
-        posRow.addEventListener('click', () => abrirCuenta(pos))
-        posWrap.appendChild(posRow)
-      })
+        const childWrap = document.createElement('div')
+        childWrap.className = 'broker-positions'
 
-      brokerRow.addEventListener('click', () => {
-        const open = brokerRow.classList.toggle('is-open')
-        posWrap.classList.toggle('is-open', open)
-      })
+        nodo.children.forEach(child => renderNodo(child, childWrap, depth + 1))
 
-      lista.appendChild(brokerRow)
-      lista.appendChild(posWrap)
+        groupRow.addEventListener('click', () => {
+          const open = groupRow.classList.toggle('is-open')
+          childWrap.classList.toggle('is-open', open)
+        })
+
+        container.appendChild(groupRow)
+        container.appendChild(childWrap)
+      } else {
+        const isPos = nodo.security_id != null
+        const row = document.createElement('div')
+        row.className = 'cuenta-row' + (isPos ? ' cuenta-row--position' : '')
+        if (depth > 0) {
+          const base = isPos ? 44 : 36
+          row.style.paddingLeft = (base + Math.max(0, depth - 1) * 16) + 'px'
+        }
+        row.innerHTML = `
+          <span class="cuenta-nombre ${isPos ? 'cuenta-nombre--pos' : ''}">${esc(nodo.name)}</span>
+          <span class="cuenta-saldo ${nodo.balance >= 0 ? 'pos' : 'neg'}">${eur(nodo.balance)}</span>
+        `
+        row.addEventListener('click', () => abrirCuenta(nodo))
+        container.appendChild(row)
+      }
+    }
+
+    // Separadores de entidad solo para cuentas-hoja en nivel raíz
+    let lastInst = Symbol()
+    items.forEach(nodo => {
+      if (!nodo.isGroup) {
+        const inst = nodo.institution || ''
+        if (inst !== lastInst) {
+          if (inst) lista.insertAdjacentHTML('beforeend', `<div class="inst-sep">${esc(inst)}</div>`)
+          lastInst = inst
+        }
+      }
+      renderNodo(nodo, lista, 0)
     })
 
     lista.insertAdjacentHTML('beforeend', `
@@ -276,7 +277,7 @@ function renderCuentas() {
 function abrirCuenta(cuenta) {
   _cuentaId     = cuenta.id
   _cuentaActiva = cuenta
-  _periodo      = 'mes'
+  _periodo      = 'todo'
   _signo        = ''
   renderCuenta(cuenta)
   mostrar('screen-cuenta')

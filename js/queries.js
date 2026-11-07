@@ -81,8 +81,9 @@ function getStatsInicio(db) {
   return { numCuentas: nc, numEntidades: ne }
 }
 
-// Lista de cuentas para el dashboard: cuentas regulares planas +
-// cuentas de inversión colapsables (broker → posiciones).
+// Lista de cuentas para el dashboard: árbol jerárquico colapsable.
+// Los padres (BBVA, CaixaBank, brokers…) aparecen como filas con chevron;
+// los hijos se muestran al expandir. Las posiciones con valor < 1 € se ocultan.
 function getCuentasDashboard(db) {
   const balMap = buildBalanceMap(db)
 
@@ -100,45 +101,33 @@ function getCuentasDashboard(db) {
   const byId = {}
   all.forEach(a => { byId[a.id] = a })
 
-  // Conjunto de IDs que tienen hijos activo/pasivo abiertos
-  const parentSet = new Set(all.map(a => a.parent_id).filter(Boolean))
-
-  // Posiciones de inversión: tienen security_id y balance distinto de 0
-  const positions = all.filter(a => a.security_id && a.balance !== 0)
-
-  // Agrupar posiciones por cuenta-broker padre
-  const posByBroker = {}
-  positions.forEach(p => {
-    if (p.parent_id && byId[p.parent_id]) {
-      ;(posByBroker[p.parent_id] = posByBroker[p.parent_id] || []).push(p)
+  // Mapa de hijos (solo dentro de las cuentas abiertas cargadas)
+  const childrenOf = {}
+  const childIds = new Set()
+  all.forEach(a => {
+    if (a.parent_id && byId[a.parent_id]) {
+      ;(childrenOf[a.parent_id] = childrenOf[a.parent_id] || []).push(a)
+      childIds.add(a.id)
     }
   })
-  const brokerIds = new Set(Object.keys(posByBroker))
 
-  // Brokers: su balance es la suma a precio de mercado de sus posiciones
-  const brokers = [...brokerIds].map(pid => {
-    const poss  = posByBroker[pid]
-    const total = poss.reduce((s, p) => s + p.balance, 0)
-    return { ...byId[pid], balance: total, positions: poss, isBroker: true }
-  }).filter(b => b.balance !== 0 || b.positions.length > 0)
+  // Raíces: cuentas que no son hijas de ninguna otra en `all`
+  const roots = all.filter(a => !childIds.has(a.id))
 
-  // Cuentas regulares: hoja (sin hijos), sin security_id, no es broker
-  const regular = all.filter(a =>
-    !a.security_id &&
-    !brokerIds.has(a.id) &&
-    !parentSet.has(a.id)
-  ).map(a => ({ ...a, positions: [] }))
+  function buildNode(acc) {
+    const kids = (childrenOf[acc.id] || []).map(buildNode).filter(Boolean)
+    // Ocultar posiciones de inversión con valor residual (< 1 €)
+    if (acc.security_id && Math.abs(acc.balance) < 100) return null
+    // El balance del grupo es la suma de sus hijos visibles
+    const balance = kids.length ? kids.reduce((s, c) => s + c.balance, 0) : acc.balance
+    return { ...acc, balance, children: kids, isGroup: kids.length > 0 }
+  }
 
-  // Posiciones huérfanas (sin broker padre en la BD): mostrar individualmente
-  const orphans = positions
-    .filter(p => !(p.parent_id && byId[p.parent_id]))
-    .map(p => ({ ...p, positions: [], isBroker: false }))
-
-  const combined = [...regular, ...brokers, ...orphans]
+  const nodes = roots.map(buildNode).filter(Boolean)
 
   return {
-    activo: combined.filter(c => c.account_class === 'activo'),
-    pasivo: combined.filter(c => c.account_class === 'pasivo')
+    activo: nodes.filter(n => n.account_class === 'activo'),
+    pasivo: nodes.filter(n => n.account_class === 'pasivo')
   }
 }
 
