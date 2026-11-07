@@ -225,9 +225,19 @@ function renderCuentas() {
 
         nodo.children.forEach(child => renderNodo(child, childWrap, depth + 1))
 
-        groupRow.addEventListener('click', () => {
+        // Chevron: expande/colapsa sin abrir la cuenta
+        groupRow.querySelector('.broker-chevron').addEventListener('click', e => {
+          e.stopPropagation()
           const open = groupRow.classList.toggle('is-open')
           childWrap.classList.toggle('is-open', open)
+        })
+        // Fila (fuera del chevron): abre transacciones, expande si estaba cerrado
+        groupRow.addEventListener('click', () => {
+          if (!groupRow.classList.contains('is-open')) {
+            groupRow.classList.add('is-open')
+            childWrap.classList.add('is-open')
+          }
+          abrirCuenta(nodo)
         })
 
         container.appendChild(groupRow)
